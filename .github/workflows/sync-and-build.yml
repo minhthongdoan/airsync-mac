@@ -1,8 +1,8 @@
-name: Sync upstream & build if changed
+name: Sync upstream & build AirSync Self Compiled
 
 on:
   schedule:
-    - cron: '0 2 * * *'  # 9AM giờ VN mỗi ngày
+    - cron: '0 2 * * *'
   workflow_dispatch:
 
 jobs:
@@ -21,48 +21,60 @@ jobs:
         run: |
           git remote add upstream https://github.com/sameerasw/airsync-mac.git
           git fetch upstream
-          
+
           LOCAL=$(git rev-parse HEAD)
           UPSTREAM=$(git rev-parse upstream/main)
-          
+
           if [ "$LOCAL" = "$UPSTREAM" ]; then
             echo "No changes"
             echo "has_changes=false" >> $GITHUB_OUTPUT
           else
-            git merge upstream/main --no-edit
+            if ! git merge upstream/main --no-edit; then
+              git merge --abort
+              exit 1
+            fi
             git push origin main
             echo "has_changes=true" >> $GITHUB_OUTPUT
           fi
 
   build:
     needs: sync
-    if: needs.sync.outputs.has_changes == 'true'
+    if: needs.sync.outputs.has_changes == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
 
-      - name: Build
-        run: |
-          xcodebuild -scheme "AirSync Self Compiled" \
-                     -configuration Release \
-                     -archivePath ./build/AirSync.xcarchive \
-                     CODE_SIGN_IDENTITY="" \
-                     CODE_SIGNING_REQUIRED=NO \
-                     CODE_SIGNING_ALLOWED=NO \
-                     archive
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest
 
-      - name: Export
+      - name: Build Archive
         run: |
-          xcodebuild -exportArchive \
-                     -archivePath ./build/AirSync.xcarchive \
-                     -exportPath ./build/output \
-                     -exportOptionsPlist ExportOptions.plist || \
-          cp -R ./build/AirSync.xcarchive/Products/Applications/AirSync.app \
-                ./build/output/AirSync.app
+          xcodebuild \
+            -scheme "AirSync Self Compiled" \
+            -configuration Release \
+            -archivePath ./build/AirSync.xcarchive \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            SWIFT_STRICT_CONCURRENCY=minimal \
+            OTHER_SWIFT_FLAGS="-strict-concurrency=minimal" \
+            archive
+
+      - name: Copy App from Archive
+        run: |
+          mkdir -p ./build/output
+          cp -R \
+            ./build/AirSync.xcarchive/Products/Applications/AirSync.app \
+            ./build/output/AirSync.app
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AirSync-${{ github.sha }}
+          name: AirSync-SelfCompiled-${{ github.sha }}
           path: ./build/output/AirSync.app
           retention-days: 30
