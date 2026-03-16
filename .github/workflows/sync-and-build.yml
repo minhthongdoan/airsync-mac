@@ -83,8 +83,9 @@ jobs:
 
       - name: Zip app bundle
         run: |
-          cd ./output
-          zip -r AirSync.zip AirSync.app
+          ditto -c -k --sequesterRsrc --keepParent \
+            ./output/AirSync.app \
+            ./output/AirSync.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
