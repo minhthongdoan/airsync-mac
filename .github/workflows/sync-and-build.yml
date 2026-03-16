@@ -52,29 +52,38 @@ jobs:
         with:
           xcode-version: latest
 
-      - name: Build Archive
+      - name: Install xcpretty
+        run: gem install xcpretty
+
+      - name: Build
         run: |
           xcodebuild \
             -scheme "AirSync Self Compiled" \
             -configuration Release \
-            -archivePath ./build/AirSync.xcarchive \
+            clean build \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             SWIFT_STRICT_CONCURRENCY=minimal \
             OTHER_SWIFT_FLAGS="-strict-concurrency=minimal" \
-            archive
+            | xcpretty
 
-      - name: Copy App from Archive
+      - name: Collect .app from DerivedData
         run: |
-          mkdir -p ./build/output
-          cp -R \
-            ./build/AirSync.xcarchive/Products/Applications/AirSync.app \
-            ./build/output/AirSync.app
+          BUILD_DIR=$(xcodebuild \
+            -scheme "AirSync Self Compiled" \
+            -configuration Release \
+            -showBuildSettings \
+            | grep -m 1 "BUILT_PRODUCTS_DIR" \
+            | awk '{print $3}')
+          
+          echo "Build dir: $BUILD_DIR"
+          mkdir -p ./output
+          cp -R "$BUILD_DIR/AirSync.app" ./output/AirSync.app
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: AirSync-SelfCompiled-${{ github.sha }}
-          path: ./build/output/AirSync.app
+          path: ./output/AirSync.app
           retention-days: 30
