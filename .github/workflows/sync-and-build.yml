@@ -1,0 +1,68 @@
+name: Sync upstream & build if changed
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # 9AM giờ VN mỗi ngày
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    outputs:
+      has_changes: ${{ steps.sync.outputs.has_changes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Sync from upstream
+        id: sync
+        run: |
+          git remote add upstream https://github.com/sameerasw/airsync-mac.git
+          git fetch upstream
+          
+          LOCAL=$(git rev-parse HEAD)
+          UPSTREAM=$(git rev-parse upstream/main)
+          
+          if [ "$LOCAL" = "$UPSTREAM" ]; then
+            echo "No changes"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            git merge upstream/main --no-edit
+            git push origin main
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          fi
+
+  build:
+    needs: sync
+    if: needs.sync.outputs.has_changes == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          xcodebuild -scheme "AirSync Self Compiled" \
+                     -configuration Release \
+                     -archivePath ./build/AirSync.xcarchive \
+                     CODE_SIGN_IDENTITY="" \
+                     CODE_SIGNING_REQUIRED=NO \
+                     CODE_SIGNING_ALLOWED=NO \
+                     archive
+
+      - name: Export
+        run: |
+          xcodebuild -exportArchive \
+                     -archivePath ./build/AirSync.xcarchive \
+                     -exportPath ./build/output \
+                     -exportOptionsPlist ExportOptions.plist || \
+          cp -R ./build/AirSync.xcarchive/Products/Applications/AirSync.app \
+                ./build/output/AirSync.app
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AirSync-${{ github.sha }}
+          path: ./build/output/AirSync.app
+          retention-days: 30
