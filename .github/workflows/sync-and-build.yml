@@ -70,16 +70,16 @@ jobs:
 
       - name: Collect .app from DerivedData
         run: |
-          BUILD_DIR=$(xcodebuild \
-            -scheme "AirSync Self Compiled" \
-            -configuration Release \
-            -showBuildSettings \
-            | grep -m 1 "BUILT_PRODUCTS_DIR" \
-            | awk '{print $3}')
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData \
+            -name "AirSync.app" \
+            -not -path "*/Build/Intermediates*" \
+            | head -1)
 
-          echo "Build dir: $BUILD_DIR"
+          echo "Found app at: $APP_PATH"
+          ls -la "$APP_PATH/Contents/MacOS/" || echo "MacOS dir missing!"
+
           mkdir -p ./output
-          cp -R "$BUILD_DIR/AirSync.app" ./output/AirSync.app
+          ditto "$APP_PATH" ./output/AirSync.app
 
       - name: Zip app bundle
         run: |
